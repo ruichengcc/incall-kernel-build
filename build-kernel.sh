@@ -91,11 +91,21 @@ cp "$CONFIG_SRC" "$KERNEL_DIR/.config"
 echo "  已复制 $(wc -l < "$CONFIG_SRC") 行"
 
 log "make oldconfig（非交互，新符号取默认值）"
+# 这里必须只看 make 的退出码。
+# `yes "" |` 喂满 make 之后，make 一退出，yes 就会吃到 SIGPIPE（退出码 141）；
+# 在 set -o pipefail 下，整条管道会被判为失败 —— 即使 oldconfig 明明写成功了。
+set +e
+set +o pipefail
 yes "" | make -C "$KERNEL_DIR" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" \
-    oldconfig > "$OUT_DIR/oldconfig.log" 2>&1 || {
-        tail -30 "$OUT_DIR/oldconfig.log"
-        die "oldconfig 失败，完整日志: $OUT_DIR/oldconfig.log"
-    }
+    oldconfig > "$OUT_DIR/oldconfig.log" 2>&1
+rc_old=$?
+set -o pipefail
+set -e
+if [ "$rc_old" -ne 0 ]; then
+    tail -30 "$OUT_DIR/oldconfig.log"
+    die "oldconfig 失败（make 退出码 $rc_old），完整日志: $OUT_DIR/oldconfig.log"
+fi
+echo "  oldconfig 完成"
 
 # 关键项必须成立，否则说明 config 被源码 Kconfig 改掉了
 log "校验关键配置"
