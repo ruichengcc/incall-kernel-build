@@ -145,6 +145,14 @@ if [ -f "$K" ] && grep -qA1 '^config SND_MXC_SOC_MX2$' "$K"; then
     fi
 fi
 
+# setlocalversion 在 git 工作区不干净时会追加 "+"，版本变成 3.0.35+。
+# 车机原版是纯净的 3.0.35，多一个 "+" 会让车上 8 个原厂 .ko 的 vermagic
+# 不匹配而全部拒绝加载（WiFi 直接挂）。这里直接去掉这段。
+if grep -q 'echo "+"' "$KERNEL_DIR/scripts/setlocalversion" 2>/dev/null; then
+    sed -i 's|echo "+"|echo ""|' "$KERNEL_DIR/scripts/setlocalversion"
+    echo "  已去掉 setlocalversion 的 \"+\" 后缀"
+fi
+
 log "写入 .config"
 cp "$CONFIG_SRC" "$KERNEL_DIR/.config"
 echo "  已复制 $(wc -l < "$CONFIG_SRC") 行"

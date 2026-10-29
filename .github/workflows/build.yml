@@ -63,6 +63,12 @@ jobs:
           git config core.autocrlf false
           git log --oneline -1
           git apply /repo/0001-iap2-ncm.patch
+          # 工作区不干净时 setlocalversion 会给版本号追加 "+"（3.0.35+），
+          # 那样车上原厂 .ko 的 vermagic 就不匹配了。这里提交一下，保持干净。
+          git -c user.email=ci@local -c user.name=ci add -A
+          git -c user.email=ci@local -c user.name=ci \
+            commit -q -m "apply iap/ncm patch" || true
+          git status --short | head -5
           echo "--- android.c 引入 ---"
           grep -n 'f_ncm.c\|f_iap2.c' drivers/usb/gadget/android.c
           echo "--- f_ncm.c 残留 __initdata（应为 0）---"
