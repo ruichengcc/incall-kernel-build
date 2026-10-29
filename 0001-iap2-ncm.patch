@@ -977,3 +977,29 @@ index 86902a60..ba7b4858 100644
  {
  	struct f_ncm	*ncm;
  	int		status;
+diff --git a/drivers/video/mxc/ldb.c b/drivers/video/mxc/ldb.c
+index 3b830191..1f5fb5b5 100644
+--- a/drivers/video/mxc/ldb.c
++++ b/drivers/video/mxc/ldb.c
+@@ -127,6 +127,21 @@ static struct fb_videomode ldb_modedb[] = {
+ 	 0,
+ 	 FB_VMODE_NONINTERLACED,
+ 	 FB_MODE_IS_DETAILED,},
++	/* Vendor panel: the car unit's cmdline is
++	 *   video=mxcfb0:dev=ldb,LDB-720W1,fbpix=RGB32
++	 * Without this entry the name lookup fails and the framebuffer is
++	 * never initialised, which shows up as a completely black screen
++	 * even though the kernel and Android boot normally.
++	 * Timing taken from the stock (vendor) kernel's own modedb.
++	 */
++	{
++	 "LDB-720W1", 60, 1920, 720, 11337,
++	 32, 32,
++	 10, 16,
++	 12, 6,
++	 0,
++	 FB_VMODE_NONINTERLACED,
++	 FB_MODE_IS_DETAILED,},
+ };
+ static int ldb_modedb_sz = ARRAY_SIZE(ldb_modedb);
+ 
