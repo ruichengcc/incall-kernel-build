@@ -11,34 +11,54 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ubuntu:20.04
+    # 关键：Linux 3.0.35 只支持到 gcc 4.x。
+    # gcc 5+ 改了 inline asm 的寄存器分配，会触发 arch/arm 里 __asmeq 的
+    # ".err encountered"（div64.h / uaccess.h，全内核高频使用）。
+    # 16.04 自带 gcc-arm-linux-gnueabi 4.9.3，正好落在支持范围内。
+    container: ubuntu:16.04
     timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
 
     steps:
-      - name: 安装构建依赖
+      - name: 准备 apt 源与依赖
         run: |
+          set -e
+          # 16.04 已 EOL，主源搬到了 old-releases
+          sed -i 's/archive.ubuntu.com/old-releases.ubuntu.com/g; s/security.ubuntu.com/old-releases.ubuntu.com/g' /etc/apt/sources.list
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            build-essential bison flex bc libncurses5-dev git python3 \
-            gcc-arm-linux-gnueabi ca-certificates curl
-          echo "--- 工具链 ---"
+            build-essential bison flex bc libncurses5-dev git curl \
+            ca-certificates python3 gcc-arm-linux-gnueabi
+          echo "=================== 工具链 ==================="
           gcc --version | head -1
           arm-linux-gnueabi-gcc --version | head -1
+          echo "============================================="
+          # 断言编译器主版本，避免悄悄换成新版
+          GV=$(arm-linux-gnueabi-gcc -dumpversion | cut -d. -f1)
+          echo "交叉编译器主版本 = $GV"
+          if [ "$GV" -ge 5 ]; then
+            echo "!! 交叉编译器是 gcc $GV，本内核需要 4.x，继续跑大概率失败"
+          fi
 
-      - uses: actions/checkout@v4
-
-      - name: 拉取内核源码
+      - name: 取仓库内容
         run: |
+          set -e
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" /repo
+          cd /repo
+          git log --oneline -1
+          ls -la
+
+      - name: 拉内核源码并打补丁
+        run: |
+          set -e
           git clone --depth 1 --single-branch --branch kk4.4.2_1.0.0-ga \
             https://github.com/GT-System/linux-2.6-imx.git /kernel
           cd /kernel
           git config core.autocrlf false
           git log --oneline -1
-
-      - name: 打补丁并校验
-        run: |
-          cd /kernel
-          git apply "$GITHUB_WORKSPACE/0001-iap2-ncm.patch"
+          git apply /repo/0001-iap2-ncm.patch
           echo "--- android.c 引入 ---"
           grep -n 'f_ncm.c\|f_iap2.c' drivers/usb/gadget/android.c
           echo "--- f_ncm.c 残留 __initdata（应为 0）---"
@@ -48,54 +68,45 @@ jobs:
 
       - name: 编译内核
         run: |
+          set -e
           KERNEL_DIR=/kernel \
-          CONFIG_SRC="$GITHUB_WORKSPACE/build.config" \
+          CONFIG_SRC=/repo/build.config \
           OUT_DIR=/out \
-          bash "$GITHUB_WORKSPACE/build-kernel.sh"
+          CROSS_COMPILE=arm-linux-gnueabi- \
+          bash /repo/build-kernel.sh
 
-      - name: 生成校验信息
+      - name: 发布 Release
         run: |
+          set -e
           cd /out
           md5sum zImage > zImage.md5
           ls -la
           cat zImage.md5
 
-      - name: 上传为 Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: zImage
-          path: |
-            /out/zImage
-            /out/zImage.md5
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: 发布 Release（公开直链，无需登录即可下载）
-        run: |
-          set -e
           TAG="kernel-$(date +%Y%m%d-%H%M%S)"
-          API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
-
-          echo "创建 release $TAG"
+          API="https://api.github.com/repos/${REPO}"
+          echo "创建 release ${TAG}"
           RESP=$(curl -sSL -X POST "$API/releases" \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
-            -d "{\"tag_name\":\"$TAG\",\"name\":\"$TAG\",\"body\":\"i.MX6DL Linux 3.0.35 + CDC-NCM + iAP2\"}")
-          RID=$(printf '%s' "$RESP" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",""))')
-          if [ -z "$RID" ]; then echo "release 创建失败: $RESP"; exit 0; fi
+            -d "{\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\",\"body\":\"i.MX6DL 3.0.35 + CDC-NCM + iAP2\"}")
+          RID=$(printf '%s' "$RESP" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)
+          if [ -z "$RID" ]; then
+            echo "release 创建失败，响应："
+            printf '%s\n' "$RESP"
+            exit 1
+          fi
 
           for f in zImage zImage.md5; do
             echo "上传 $f"
             curl -sSL -X POST \
-              "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${RID}/assets?name=${f}" \
-              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              "https://uploads.github.com/repos/${REPO}/releases/${RID}/assets?name=${f}" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
               -H "Content-Type: application/octet-stream" \
-              --data-binary "@/out/${f}" > /dev/null
+              --data-binary @"/out/${f}" > /dev/null
           done
 
           echo "=================================================="
           echo "下载地址（公开，无需登录）:"
-          echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/zImage"
+          echo "https://github.com/${REPO}/releases/download/${TAG}/zImage"
           echo "=================================================="
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
