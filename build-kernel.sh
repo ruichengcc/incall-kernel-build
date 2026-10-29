@@ -132,6 +132,19 @@ if grep -q 'defined(@val)' "$KERNEL_DIR/kernel/timeconst.pl" 2>/dev/null; then
     echo "  已修正 timeconst.pl 的 defined(@array)"
 fi
 
+# 官方 BSP 里 SND_MXC_SOC_MX2 是"无 prompt 的 tristate"（只能被 select），
+# 但车机的 .config 明确写着 =y。无 prompt 的符号，oldconfig 会忽略 .config 的值，
+# 于是 imx-pcm-dma-mx2.o 不参与编译，而 mxc_asrc.c 无条件引用它导出的
+# asrc_p2p_hook → vmlinux 链接时 undefined reference。
+# 给它补一个 prompt，让 .config 里的 =y 生效。
+K="$KERNEL_DIR/sound/soc/imx/Kconfig"
+if [ -f "$K" ] && grep -qA1 '^config SND_MXC_SOC_MX2$' "$K"; then
+    if ! grep -A1 '^config SND_MXC_SOC_MX2$' "$K" | grep -q 'tristate "'; then
+        sed -i '/^config SND_MXC_SOC_MX2$/{n;s/^[[:space:]]*tristate[[:space:]]*$/	tristate "i.MX2x PCM DMA support"/}' "$K"
+        echo "  已给 SND_MXC_SOC_MX2 补 prompt（否则 asrc_p2p_hook 未定义）"
+    fi
+fi
+
 log "写入 .config"
 cp "$CONFIG_SRC" "$KERNEL_DIR/.config"
 echo "  已复制 $(wc -l < "$CONFIG_SRC") 行"
@@ -171,6 +184,7 @@ fails=0
 check_cfg CONFIG_USB_GADGET      y "USB gadget 框架"            || fails=$((fails+1))
 check_cfg CONFIG_USB_G_ANDROID   y "Android gadget（含我们的 iap/ncm）" || fails=$((fails+1))
 check_cfg CONFIG_MACH_MX6Q_SABRESD y "官方 sabresd 板级"        || fails=$((fails+1))
+check_cfg CONFIG_SND_MXC_SOC_MX2  y "ASRC 依赖的 PCM DMA（缺了会 asrc_p2p_hook 未定义）" || fails=$((fails+1))
 if grep -q '^CONFIG_LOCALVERSION_AUTO=y' "$CONFIG_FILE"; then
     printf '  \033[31mFAIL\033[0m CONFIG_LOCALVERSION_AUTO 竟然还是 y，vermagic 会带 -g<hash>\n'
     fails=$((fails+1))
