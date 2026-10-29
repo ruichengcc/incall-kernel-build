@@ -86,6 +86,25 @@ if [ "$GCC_MAJOR" -ge 12 ]; then
 fi
 
 # --------------------------------------------------------------- 4. config
+# 3.0.35 只带了 compiler-gcc3.h / compiler-gcc4.h；
+# compiler-gcc.h 会按 __GNUC__ 拼出 linux/compiler-gcc<N>.h，用新 gcc 编就找不到文件。
+# 这里按当前编译器版本补一个转发头，复用 gcc4 的定义。
+CG_H="$KERNEL_DIR/include/linux/compiler-gcc${GCC_MAJOR}.h"
+if [ ! -f "$CG_H" ]; then
+    log "补 compiler-gcc${GCC_MAJOR}.h（本内核早于 gcc ${GCC_MAJOR}）"
+    cat > "$CG_H" <<EOF
+#ifndef __LINUX_COMPILER_H
+#error "Please don't include <linux/compiler-gcc${GCC_MAJOR}.h> directly, include <linux/compiler.h> instead."
+#endif
+
+/* This kernel predates gcc ${GCC_MAJOR}; reuse the gcc4 capability definitions. */
+#include <linux/compiler-gcc4.h>
+EOF
+    echo "  已生成 $(basename "$CG_H")"
+else
+    echo "  compiler-gcc${GCC_MAJOR}.h 已存在"
+fi
+
 log "写入 .config"
 cp "$CONFIG_SRC" "$KERNEL_DIR/.config"
 echo "  已复制 $(wc -l < "$CONFIG_SRC") 行"
