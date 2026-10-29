@@ -25,8 +25,10 @@ jobs:
       - name: 准备 apt 源与依赖
         run: |
           set -e
-          # 16.04 已 EOL，主源搬到了 old-releases
-          sed -i 's/archive.ubuntu.com/old-releases.ubuntu.com/g; s/security.ubuntu.com/old-releases.ubuntu.com/g' /etc/apt/sources.list
+          # xenial 仍留在 archive.ubuntu.com（还在 ESM 期，没迁到 old-releases）。
+          # updates/security/backports 走 ESM，匿名访问会 404，所以只留主源，
+          # 避免 apt 因为拉不到索引而整体失败。
+          printf 'deb http://archive.ubuntu.com/ubuntu/ xenial main universe\n' > /etc/apt/sources.list
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential bison flex bc libncurses5-dev git curl \
@@ -35,11 +37,11 @@ jobs:
           gcc --version | head -1
           arm-linux-gnueabi-gcc --version | head -1
           echo "============================================="
-          # 断言编译器主版本，避免悄悄换成新版
           GV=$(arm-linux-gnueabi-gcc -dumpversion | cut -d. -f1)
           echo "交叉编译器主版本 = $GV"
           if [ "$GV" -ge 5 ]; then
-            echo "!! 交叉编译器是 gcc $GV，本内核需要 4.x，继续跑大概率失败"
+            echo "!! 交叉编译器是 gcc $GV，本内核需要 4.x"
+            exit 1
           fi
 
       - name: 取仓库内容
