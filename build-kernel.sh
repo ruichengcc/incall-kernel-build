@@ -125,6 +125,13 @@ if grep -q 'ifnc.*\.err' "$KERNEL_DIR/arch/arm/include/asm/system.h" 2>/dev/null
     echo "  已停用 __asmeq 汇编寄存器断言"
 fi
 
+# perl 5.22 起禁止 defined(@array)（运行时报
+# "Can't use 'defined(@array)'"），3.0 的 timeconst.pl 还在用。
+if grep -q 'defined(@val)' "$KERNEL_DIR/kernel/timeconst.pl" 2>/dev/null; then
+    sed -i 's/if (!defined(@val))/if (!@val)/' "$KERNEL_DIR/kernel/timeconst.pl"
+    echo "  已修正 timeconst.pl 的 defined(@array)"
+fi
+
 log "写入 .config"
 cp "$CONFIG_SRC" "$KERNEL_DIR/.config"
 echo "  已复制 $(wc -l < "$CONFIG_SRC") 行"
