@@ -39,8 +39,10 @@ jobs:
           echo "============================================="
           GV=$(arm-linux-gnueabi-gcc -dumpversion | cut -d. -f1)
           echo "交叉编译器主版本 = $GV"
-          if [ "$GV" -ge 5 ]; then
-            echo "!! 交叉编译器是 gcc $GV，本内核需要 4.x"
+          # 4.x / 5.x 都可以：__asmeq 的寄存器断言已在 build-kernel.sh 里停用，
+          # compiler-gcc<N>.h 也会自动补。6 以上 inline asm 行为变化太大，才拦。
+          if [ "$GV" -ge 6 ]; then
+            echo "!! gcc $GV 过新，本内核需要 4.x/5.x"
             exit 1
           fi
 
