@@ -1,17 +1,24 @@
 diff --git a/drivers/usb/gadget/android.c b/drivers/usb/gadget/android.c
-index 7e3b161d..b1e2bb89 100644
+index 7e3b161d..9d3e1e9c 100644
 --- a/drivers/usb/gadget/android.c
 +++ b/drivers/usb/gadget/android.c
-@@ -58,6 +58,17 @@
+@@ -56,8 +56,24 @@
+ #define USB_ETH_RNDIS y
+ #include "f_rndis.c"
  #include "rndis.c"
- #include "u_ether.c"
- 
-+/* CDC-NCM function. Paired with f_iap this gives the iPhone a real
-+ * IP-capable interface, which is what Wired CarPlay's data plane needs.
-+ * Same model as f_rndis above: single translation unit, no export needed.
++
++/* f_ncm.c MUST come before u_ether.c.
++ *
++ * u_ether.c redefines INFO/ERROR/DBG so that they dereference eth_dev->net,
++ * but f_ncm.c calls INFO/ERROR with a struct usb_composite_dev *.
++ * If f_ncm.c is included after u_ether.c, every one of those calls fails with
++ * "'struct usb_composite_dev' has no member named 'net'".
++ * ncm.c includes them in this exact order for the same reason.
 + */
 +#include "f_ncm.c"
 +
+ #include "u_ether.c"
+ 
 +/* iAP2 accessory function, exposing /dev/android_iap. The control plane
 + * DiPlay speaks to the iPhone goes through this chardev.
 + */
@@ -20,7 +27,7 @@ index 7e3b161d..b1e2bb89 100644
  MODULE_AUTHOR("Mike Lockwood");
  MODULE_DESCRIPTION("Android Composite USB Driver");
  MODULE_LICENSE("GPL");
-@@ -523,6 +534,133 @@ static struct android_usb_function rndis_function = {
+@@ -523,6 +539,133 @@ static struct android_usb_function rndis_function = {
  };
  
  
@@ -154,7 +161,7 @@ index 7e3b161d..b1e2bb89 100644
  struct mass_storage_function_config {
  	struct fsg_config fsg;
  	struct fsg_common *common;
-@@ -713,6 +851,8 @@ static struct android_usb_function *supported_functions[] = {
+@@ -713,6 +856,8 @@ static struct android_usb_function *supported_functions[] = {
  	&mtp_function,
  	&ptp_function,
  	&rndis_function,
