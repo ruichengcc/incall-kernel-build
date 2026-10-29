@@ -77,9 +77,18 @@ echo "  使用  : ${CROSS_COMPILE}gcc"
 GCC_MAJOR=$("${CROSS_COMPILE}gcc" -dumpversion 2>/dev/null | cut -d. -f1)
 GCC_MAJOR=${GCC_MAJOR:-0}
 KCFLAGS_EXTRA=""
+
+# gcc 5 起把 `extern inline` 改成 C99 语义（不再生成外部定义）。
+# 3.0 内核大量依赖 GNU89 的 extern inline，会报 "redefinition of ..."。
+# 必须显式退回 GNU89 inline 语义。
+if [ "$GCC_MAJOR" -ge 5 ]; then
+    KCFLAGS_EXTRA="-fgnu89-inline"
+    echo "  gcc $GCC_MAJOR: 加 -fgnu89-inline（老内核的 extern inline 语义）"
+fi
+# gcc 10 起默认 -fno-common，老内核的重复 tentative definition 会报错。
 if [ "$GCC_MAJOR" -ge 10 ]; then
-    KCFLAGS_EXTRA="-fcommon"
-    warn "gcc $GCC_MAJOR 偏新，加 -fcommon 兼容老内核（默认 -fno-common 会重复定义）"
+    KCFLAGS_EXTRA="$KCFLAGS_EXTRA -fcommon"
+    echo "  gcc $GCC_MAJOR: 加 -fcommon"
 fi
 if [ "$GCC_MAJOR" -ge 12 ]; then
     warn "gcc 12+ 编 3.0 内核成功率低，建议换 gcc 4.9/5.4 或 AOSP arm-eabi-4.6"
