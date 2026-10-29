@@ -114,6 +114,17 @@ else
     echo "  compiler-gcc${GCC_MAJOR}.h 已存在"
 fi
 
+# gcc 5 起不再保证 "r" 约束被分配到某个具体寄存器，
+# 而 3.0 的 div64.h / uaccess.h 用 __asmeq 做"偏执检查"（源码注释自称 paranoia），
+# 一旦寄存器编号不符就由汇编器 .ifnc/.err 报错。
+# 那些内联汇编用的是操作数编号 %0/%1/%2，本身不依赖具体寄存器，
+# 所以停用这个断言不改变生成的代码，只是不再强制校验。
+if grep -q 'ifnc.*\.err' "$KERNEL_DIR/arch/arm/include/asm/system.h" 2>/dev/null; then
+    sed -i 's|^#define __asmeq(x, y).*|#define __asmeq(x, y)|' \
+        "$KERNEL_DIR/arch/arm/include/asm/system.h"
+    echo "  已停用 __asmeq 汇编寄存器断言"
+fi
+
 log "写入 .config"
 cp "$CONFIG_SRC" "$KERNEL_DIR/.config"
 echo "  已复制 $(wc -l < "$CONFIG_SRC") 行"

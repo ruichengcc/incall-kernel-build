@@ -25,10 +25,10 @@ jobs:
       - name: 准备 apt 源与依赖
         run: |
           set -e
-          # xenial 仍留在 archive.ubuntu.com（还在 ESM 期，没迁到 old-releases）。
-          # updates/security/backports 走 ESM，匿名访问会 404，所以只留主源，
-          # 避免 apt 因为拉不到索引而整体失败。
-          printf 'deb http://archive.ubuntu.com/ubuntu/ xenial main universe\n' > /etc/apt/sources.list
+          # xenial 仍在 archive.ubuntu.com（还在 ESM 期）。
+          # updates 必须带上，否则 libc6-dev / gcc 的版本依赖无法满足；
+          # security 走 ESM、匿名会 404，所以不写。
+          printf 'deb http://archive.ubuntu.com/ubuntu/ xenial main universe\ndeb http://archive.ubuntu.com/ubuntu/ xenial-updates main universe\n' > /etc/apt/sources.list
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential bison flex bc libncurses5-dev git curl \
